@@ -14,7 +14,7 @@ torch.manual_seed(1)
 plt.close('all')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print(device)
+print(f'Using device "{device}"')
 
 script_folder_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -159,162 +159,171 @@ def initialize_weights(cfg, m):
       nn.init.constant_(m.bias.data, 0)
 
 
-#------------------------------------------------------------------------------
-# load data
-train_batch_size = 256  # Define train batch size
-train_val_split = 0.8
+if __name__ == '__main__':
+  #------------------------------------------------------------------------------
+  # load data
+  train_batch_size = 256  # Define train batch size
+  train_val_split = 0.8
 
-dataFolder = os.path.dirname(script_folder_path) + '/data/'
+  dataFolder = os.path.dirname(script_folder_path) + '/data/'
 
-# Use the following code to load and normalize the dataset
-torch_train_dataset = torchvision.datasets.MNIST(dataFolder, train=True, download=True,
-                                                transform=torchvision.transforms.Compose([
-                                                  torchvision.transforms.ToTensor(),
-                                                  torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
+  # Use the following code to load and normalize the dataset
+  torch_train_dataset = torchvision.datasets.MNIST(dataFolder, train=True, download=True,
+                                                  transform=torchvision.transforms.Compose([
+                                                    torchvision.transforms.ToTensor(),
+                                                    torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
 
-# split the training data into training and validation
-train_size = len(torch_train_dataset)
-new_train_size = int(train_val_split * train_size)
-val_size = train_size - new_train_size
+  # split the training data into training and validation
+  train_size = len(torch_train_dataset)
+  new_train_size = int(train_val_split * train_size)
+  val_size = train_size - new_train_size
 
-train_dataset, val_dataset = torch.utils.data.random_split(torch_train_dataset, [new_train_size, val_size])
+  train_dataset, val_dataset = torch.utils.data.random_split(torch_train_dataset, [new_train_size, val_size])
 
-# use batches for training
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = train_batch_size, shuffle=True)
-train_data, train_targets = convert_batches_to_device(train_loader, device)
+  # use batches for training
+  train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = train_batch_size, shuffle=True)
+  train_data, train_targets = convert_batches_to_device(train_loader, device)
 
-# use full data for validation set (no batches)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size = len(val_dataset), shuffle=True)
-val_data, val_targets = get_next_data_batch(val_loader, device)
+  # use full data for validation set (no batches)
+  val_loader = torch.utils.data.DataLoader(val_dataset, batch_size = len(val_dataset), shuffle=True)
+  val_data, val_targets = get_next_data_batch(val_loader, device)
 
-# use full data for test set (no batches)
-torch_test_dataset = torchvision.datasets.MNIST(dataFolder, train=False, download=True,
-                                                transform=torchvision.transforms.Compose([
-                                                  torchvision.transforms.ToTensor(),
-                                                  torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
+  # use full data for test set (no batches)
+  torch_test_dataset = torchvision.datasets.MNIST(dataFolder, train=False, download=True,
+                                                  transform=torchvision.transforms.Compose([
+                                                    torchvision.transforms.ToTensor(),
+                                                    torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
 
-test_loader = torch.utils.data.DataLoader(torch_test_dataset, batch_size = len(torch_test_dataset), shuffle=True)
-test_data, test_targets = get_next_data_batch(test_loader, device)
-  
-
-#------------------------------------------------------------------------------
-# train and evaluate network
-def create_baseline_config():
-    cfg = {'name': 'baseline',
-           'network_config': 'config_1',
-           'epochs': 10,
-           'learning_rate': 0.0015,
-           'optimizer': 'Adam',
-           'initialization': 'None'}
-    return cfg
-
-cfg = create_baseline_config()
+  test_loader = torch.utils.data.DataLoader(torch_test_dataset, batch_size = len(torch_test_dataset), shuffle=True)
+  test_data, test_targets = get_next_data_batch(test_loader, device)
     
-# the neural network object
-nnModel = my_LeNet_Model(cfg)
-#nnModel = CNNModel()
-#init_weights_fun = partial(initialize_weights, cfg)
-#nnModel.apply(init_weights_fun)
-nnModel = nnModel.to(device)
-  
-opt_dict = {'SGD': torch.optim.SGD(nnModel.parameters(), lr=cfg['learning_rate']),
-            'Adam': torch.optim.Adam(nnModel.parameters(), lr = cfg['learning_rate'])}
-   
-optimizer = opt_dict[cfg['optimizer']]
-loss_fn   = nn.CrossEntropyLoss()
 
-# train model
-loss_train_list = np.zeros((cfg['epochs'],))
-loss_val_list = np.zeros((cfg['epochs'],))
-accuracy_val_list = np.zeros((cfg['epochs'],))
+  #------------------------------------------------------------------------------
+  # train and evaluate network
+  def create_baseline_config():
+      cfg = {'name': 'baseline',
+             'network_config': 'config_1',
+             'epochs': 10,
+             'learning_rate': 0.0015,
+             'optimizer': 'Adam',
+             'initialization': 'None'}
+      return cfg
 
-# epoch - one loop through all the data points
-for epoch in tqdm.trange(cfg['epochs']):
-#for epoch in range(cfg['epochs']):
-    
-    # some layers (like dropout) have different behavior when training and 
-    # evaluating the model, switch to train mode
-    
-    nnModel.train()
-    # batch update the weights
-    for X_train, y_train in zip(train_data, train_targets):
-        
-        optimizer.zero_grad()
-        
-        y_pred = nnModel(X_train)
-        
-        loss = loss_fn(y_pred, y_train)
-        loss.backward()
-        optimizer.step()
-        
-    # evaluate loss and accuracy on validation data
-    with torch.no_grad():
-        
-        nnModel.eval()
-        y_val_pred = nnModel(val_data) 
-        loss_val = loss_fn(y_val_pred, val_targets)
-        
-        # accuracy
-        correct = (torch.argmax(y_val_pred, dim=1) == val_targets).type(torch.FloatTensor)
-        acc = correct.cpu().mean()
-        accuracy_val_list[epoch] = acc.item()
-       
-    #print('training batch loss: {}'.format(loss.item()))
-    #print('validation accuracy: {}'.format(acc.item()))
-    
-    loss_val_list[epoch] = loss_val.detach().item()
-    loss_train_list[epoch] = loss.detach().item()
-    
-y_test_pred = nnModel(test_data) 
-correct = (torch.argmax(y_test_pred, dim=1) == test_targets).type(torch.FloatTensor)
-test_accuracy = correct.cpu().mean()    
-print('final training batch loss: {}'.format(loss.item()))
-print('final validation accuracy: {}'.format(acc.item()))
-print('Test dataset accuracy: {}'.format(test_accuracy))
-        
-# some metrics
-plt.figure()
-plt.plot(loss_train_list)
-plt.plot(loss_val_list)
-plt.title('Loss')
-plt.xlabel('training epoch')
-plt.legend(['training loss (single batch)', 'validation loss'])
+  cfg = create_baseline_config()
 
-plt.figure()
-plt.plot(accuracy_val_list)
-plt.title('validation accuracy')
-plt.xlabel('training epoch')
-
-
-# look at some examples
-if True:
-    sample_data, sample_targets = get_next_data_batch(train_loader, 'cpu')
-    
-    y_samp_pred = nnModel(sample_data.to(device)) 
-    pred_max, idx_max = torch.max(y_samp_pred, axis = 1)
-    y_samp2 = y_samp_pred.cpu().detach().numpy()
-    
-    img_dim_x = sample_data.shape[2]
-    img_dim_y = sample_data.shape[3]
-    
-    # check that the data wasn't messed up
-    fig = plt.figure()
-    offset = 65
-    for i in range(6):
-      plt.subplot(2,3,i+1)
-      plt.tight_layout()
-      plt.imshow(sample_data[i+offset,0,:,:])
-      plt.title("prediction: {}, probability: {:.2f}".format(idx_max[i+offset], pred_max[i+offset]))
-      plt.xticks([])
-      plt.yticks([])
+  cfg['epochs'] = 6 # Shorter compute time!
       
-    fig = plt.figure()
-    offset = 15
-    for i in range(6):
-      plt.subplot(2,3,i+1)
-      plt.tight_layout()
-      plt.imshow(sample_data[i+offset,0,:,:])
-      plt.title("prediction: {}, probability: {:.2f}".format(idx_max[i+offset], pred_max[i+offset]))
-      plt.xticks([])
-      plt.yticks([])      
+  # the neural network object
+  nnModel = my_LeNet_Model(cfg)
+  #nnModel = CNNModel()
+  #init_weights_fun = partial(initialize_weights, cfg)
+  #nnModel.apply(init_weights_fun)
+  nnModel = nnModel.to(device)
+    
+  opt_dict = {'SGD': torch.optim.SGD(nnModel.parameters(), lr=cfg['learning_rate']),
+              'Adam': torch.optim.Adam(nnModel.parameters(), lr = cfg['learning_rate'])}
+     
+  optimizer = opt_dict[cfg['optimizer']]
+  loss_fn   = nn.CrossEntropyLoss()
+
+  # train model
+  loss_train_list = np.zeros((cfg['epochs'],))
+  loss_val_list = np.zeros((cfg['epochs'],))
+  accuracy_val_list = np.zeros((cfg['epochs'],))
+
+  # epoch - one loop through all the data points
+  for epoch in tqdm.trange(cfg['epochs']):
+  #for epoch in range(cfg['epochs']):
+      
+      # some layers (like dropout) have different behavior when training and 
+      # evaluating the model, switch to train mode
+      
+      nnModel.train()
+      # batch update the weights
+      for X_train, y_train in zip(train_data, train_targets):
+          
+          optimizer.zero_grad()
+          
+          y_pred = nnModel(X_train)
+          
+          loss = loss_fn(y_pred, y_train)
+          loss.backward()
+          optimizer.step()
+          
+      # evaluate loss and accuracy on validation data
+      with torch.no_grad():
+          
+          nnModel.eval()
+          y_val_pred = nnModel(val_data) 
+          loss_val = loss_fn(y_val_pred, val_targets)
+          
+          # accuracy
+          correct = (torch.argmax(y_val_pred, dim=1) == val_targets).type(torch.FloatTensor)
+          acc = correct.cpu().mean()
+          accuracy_val_list[epoch] = acc.item()
+         
+      #print('training batch loss: {}'.format(loss.item()))
+      #print('validation accuracy: {}'.format(acc.item()))
+      
+      loss_val_list[epoch] = loss_val.detach().item()
+      loss_train_list[epoch] = loss.detach().item()
+      
+  y_test_pred = nnModel(test_data) 
+  correct = (torch.argmax(y_test_pred, dim=1) == test_targets).type(torch.FloatTensor)
+  test_accuracy = correct.cpu().mean()    
+  print('final training batch loss: {}'.format(round(loss.item(), 4)))
+  print('final validation accuracy: {}%'.format(round(acc.item()*100, 1)))
+  print('Test dataset accuracy: {}%'.format(round(test_accuracy.item()*100, 1)))
+
+  # SAVE!
+  torch.save(nnModel.state_dict(), './scatch/MNIST_CNN_MODEL.pt')
+  # torch.save(nnModel, './scatch/MNIST_CNN_MODEL.pt')
+          
+  # some metrics
+  plt.figure()
+  plt.plot(loss_train_list)
+  plt.plot(loss_val_list)
+  plt.title('Loss')
+  plt.xlabel('training epoch')
+  plt.legend(['training loss (single batch)', 'validation loss'])
+
+  plt.figure()
+  plt.plot(accuracy_val_list)
+  plt.title('validation accuracy')
+  plt.xlabel('training epoch')
+
+
+  # look at some examples
+  if False:
+      sample_data, sample_targets = get_next_data_batch(train_loader, 'cpu')
+      
+      y_samp_pred = nnModel(sample_data.to(device)) 
+      pred_max, idx_max = torch.max(y_samp_pred, axis = 1)
+      y_samp2 = y_samp_pred.cpu().detach().numpy()
+      
+      img_dim_x = sample_data.shape[2]
+      img_dim_y = sample_data.shape[3]
+      
+      # check that the data wasn't messed up
+      fig = plt.figure()
+      offset = 65
+      for i in range(6):
+        plt.subplot(2,3,i+1)
+        plt.tight_layout()
+        plt.imshow(sample_data[i+offset,0,:,:])
+        plt.title("prediction: {}, probability: {:.2f}".format(idx_max[i+offset], pred_max[i+offset]))
+        plt.xticks([])
+        plt.yticks([])
+        
+      fig = plt.figure()
+      offset = 15
+      for i in range(6):
+        plt.subplot(2,3,i+1)
+        plt.tight_layout()
+        plt.imshow(sample_data[i+offset,0,:,:])
+        plt.title("prediction: {}, probability: {:.2f}".format(idx_max[i+offset], pred_max[i+offset]))
+        plt.xticks([])
+        plt.yticks([])      
+
+      plt.show()
 
