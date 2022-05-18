@@ -5,6 +5,7 @@ import numpy as np
 from statistics import NormalDist
 import tqdm
 import matplotlib.pyplot as plt
+from statsmodels.stats.proportion import proportion_confint
 
 DEFAULT_SIGMAS = (0.12, 0.25, 0.50, 1.00, 1.25)
 
@@ -37,9 +38,9 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
         # percent_correct = float(total_correct)/(MC_itr*test_targets.numel())*100.0
         # print(f'Accuracy: {round(percent_correct, 2)}%')
         
-        for idx in range(mc_y_pred.size()[0]): # Compute and save R for every image
+        for idx in tqdm.tqdm(range(mc_y_pred.size()[0]), desc='Calculating radii'): # Compute and save R for every image
             max_cnt = torch.max(mc_y_pred.select(0, idx)).item()
-            pa = lower_conf_bound(max_cnt, MC_itr, 0.05)
+            pa = lower_conf_bound(max_cnt, MC_itr, alpha)
             ### TODO fix this, use end of "certify" instead...
             # pb = 1-pa
             # if pa == 1.0:
@@ -55,12 +56,14 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
     return R_vals # Return R for every noise level and image
 
 def lower_conf_bound(k, n, alpha):
-    if k==n: # TODO use poisson distribution if (1-k)/n <= 0.05
+    if k==n:
         return alpha**(1/n)
     else:
-        p = float(k)/float(n)
-        z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
-        return p - z*sqrt( p*(1-p) / n )
+        # p = float(k)/float(n)
+        # z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
+        # return p - z*sqrt( p*(1-p) / n )        
+        # TODO make this faster!
+        return proportion_confint(k, n, alpha=alpha*2, method='binom_test')[0]
 
 # Demo using model from MNIST_CNN_script.py
 def main():
@@ -82,7 +85,7 @@ def main():
 
     # Estimate robustness
     custom_sigmas=(0.0, 0.25, 0.50, 1.00)
-    result = meas_noise_robustness(model, test_data, test_targets, 
+    result = meas_noise_robustness(model, test_data, test_targets,
                                    MC_itr=100, alpha=0.001, sigmas=custom_sigmas)
     print('Evaluation complete!')
     torch.save(result, 'data/robustness_result.pt')
