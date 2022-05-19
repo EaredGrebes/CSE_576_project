@@ -6,6 +6,7 @@ from statistics import NormalDist
 import tqdm
 import matplotlib.pyplot as plt
 from statsmodels.stats.proportion import proportion_confint
+import functools
 
 DEFAULT_SIGMAS = (0.12, 0.25, 0.50, 1.00, 1.25)
 
@@ -41,13 +42,6 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
         for idx in tqdm.tqdm(range(mc_y_pred.size()[0]), desc='Calculating radii'): # Compute and save R for every image
             max_cnt = torch.max(mc_y_pred.select(0, idx)).item()
             pa = lower_conf_bound(max_cnt, MC_itr, alpha)
-            ### TODO fix this, use end of "certify" instead...
-            # pb = 1-pa
-            # if pa == 1.0:
-            #     R = 1.0 
-            # else:
-            #     R = sigma/2 * (NormalDist().inv_cdf(pa) - NormalDist().inv_cdf(pb))
-            ###
             R = -1.0
             if pa > 0.5: R = sigma*NormalDist().inv_cdf(pa)
             R_vals[sigma_idx][idx] = R
@@ -55,15 +49,18 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
         print()
     return R_vals # Return R for every noise level and image
 
+@functools.lru_cache()
 def lower_conf_bound(k, n, alpha):
+    max_bnd = alpha**(1/n)
     if k==n:
-        return alpha**(1/n)
+        return max_bnd
     else:
-        # p = float(k)/float(n)
-        # z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
-        # return p - z*sqrt( p*(1-p) / n )        
-        # TODO make this faster!
-        return proportion_confint(k, n, alpha=alpha*2, method='binom_test')[0]
+        p = float(k)/float(n)
+        z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
+        ndist_bnd = p - z*sqrt( p*(1-p) / n )
+        return min(max_bnd, ndist_bnd)
+        # TODO make this work at all?
+        #return proportion_confint(k, n, alpha=alpha*2, method='binom_test')[0]
 
 # Demo using model from MNIST_CNN_script.py
 def main():
@@ -84,14 +81,14 @@ def main():
     print()
 
     # Estimate robustness
-    custom_sigmas=(0.0, 0.25, 0.50, 1.00)
+    custom_sigmas=(0.25, 0.50, 1.00, 1.25)
     result = meas_noise_robustness(model, test_data, test_targets,
-                                   MC_itr=100, alpha=0.001, sigmas=custom_sigmas)
+                                   MC_itr=200, alpha=0.001, sigmas=custom_sigmas)
     print('Evaluation complete!')
     torch.save(result, 'data/robustness_result.pt')
 
     # Compute proportion of images within robustness radius
-    rs = np.linspace(0.0, 2.0, num=400)
+    rs = np.linspace(0.0, 3.0, num=400)
     Rs_vals = torch.empty((len(rs), len(custom_sigmas)))
     for i, r in enumerate(rs):
         Rs_vals[i] = (result>r).sum(dim=1)/(result.size()[1])
@@ -100,6 +97,11 @@ def main():
     plt.figure()
     for i, s in enumerate(custom_sigmas):
         plt.plot(rs, Rs_vals.select(dim=1, index=i), label=f'sigma = {s}')
+    
+    plt.title('Certified Accuracy vs radius of LeNet on MNIST test set')
+    plt.xlabel('Radius')
+    plt.ylim([0.0, 1.0])
+    plt.ylabel('Certified Accuracy')
     plt.legend()
     plt.show()
 
