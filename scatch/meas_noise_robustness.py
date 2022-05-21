@@ -22,35 +22,42 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
     for sigma_idx, sigma in enumerate(sigmas):
         # For N Monte-Carlo iterations:
         print(f'Sigma = {sigma}:')        
-        mc_y_pred = torch.zeros(nn_out_size, dtype=torch.int16) # num_images x num_classes
+        mc_y_pred = torch.zeros(nn_out_size, dtype=torch.int32) # num_images x num_classes
         for itr in tqdm.tqdm(range(MC_itr), desc='AWGN samples'):
             # pre-process test_data with awgn
             test_data_noised = test_data.detach()
-            test_data_noised.add_(sigma*torch.randn(test_data_noised.size()))
+            test_data_noised.add_(sigma**2*torch.randn(test_data_noised.size()))
             y_pred = nn_model(test_data_noised) # make predictions
             # Save predictions            
             maxes = torch.argmax(y_pred, dim=1) # num_images x 1 (prediction per image)
             for idx in range(maxes.numel()):
                 mc_y_pred[idx][maxes[idx].item()] += 1 # Add to prediction count for each image
         
-        # # For each image, print probability of correct prediction
-        # total_correct = 0
-        # for idx in range(test_targets.numel()):
-        #     total_correct += mc_y_pred[idx][test_targets[idx].item()].item()
-        # percent_correct = float(total_correct)/(MC_itr*test_targets.numel())*100.0
-        # print(f'Accuracy: {round(percent_correct, 2)}%')
+        # d = mc_y_pred.select(0, 0)
+        # print(f'Image 0: counts = {d.tolist()}')
+        # test_lb = lower_conf_bound(d.max().item(), MC_itr, alpha)
+        # print(f'Image 0: lower_bd({d.max().item()}, {MC_itr}) = {test_lb}')
+        # if test_lb > 0.5: print(f'Image 0: radius = {sigma*NormalDist().inv_cdf(test_lb)}')
+        # continue
+
+        # Print the total prediction accuracy
+        total_correct = 0
+        for idx in range(test_targets.numel()):
+            total_correct += mc_y_pred[idx][test_targets[idx].item()].item()
+        percent_correct = float(total_correct)/(MC_itr*test_targets.numel())*100.0
+        print(f'Prediction Accuracy (under AWGN): {round(percent_correct, 2)}%')
         
         for idx in tqdm.tqdm(range(mc_y_pred.size()[0]), desc='Calculating radii'): # Compute and save R for every image
             max_cnt = torch.max(mc_y_pred.select(0, idx)).item()
             pa = lower_conf_bound(max_cnt, MC_itr, alpha)
-            R = -1.0
-            if pa > 0.5: R = sigma*NormalDist().inv_cdf(pa)
+            # R = -1.0
+            # if pa > 0.5: R = sigma*NormalDist().inv_cdf(pa) # TODO remove?
+            R = sigma*NormalDist().inv_cdf(pa)
             R_vals[sigma_idx][idx] = R
 
         print()
     return R_vals # Return R for every noise level and image
 
-@functools.lru_cache()
 def lower_conf_bound_old(k, n, alpha):
     max_bnd = alpha**(1/n)
     if k==n:
@@ -63,7 +70,7 @@ def lower_conf_bound_old(k, n, alpha):
         # Due to some bug, this doesn't work at all!
         #return proportion_confint(k, n, alpha=alpha*2, method='binom_test')[0]
 
-@functools.lru_cache()
+@functools.lru_cache() # Cache results for speed
 def lower_conf_bound(k, n, alpha):
     # Binary search to invert binomial tests. A bit ridiculous...
     BIN_SEARCH_ITRS = 24 # Enough for 32-bit floating-point mantissa
@@ -95,14 +102,15 @@ def main():
     print()
 
     # Estimate robustness
-    custom_sigmas=(0.25, 0.50, 1.00, 1.25)
+    custom_sigmas = (0.25, 0.50, 1.00, 1.25)
+    N = 200
     result = meas_noise_robustness(model, test_data, test_targets,
-                                   MC_itr=200, alpha=0.001, sigmas=custom_sigmas)
+                                   MC_itr=N, alpha=0.001, sigmas=custom_sigmas)
     print('Evaluation complete!')
     torch.save(result, 'data/robustness_result.pt')
 
     # Compute proportion of images within robustness radius
-    rs = np.linspace(0.0, 3.0, num=1000)
+    rs = np.linspace(0.0, 5.0, num=1000)
     Rs_vals = torch.empty((len(rs), len(custom_sigmas)))
     for i, r in enumerate(rs):
         Rs_vals[i] = (result>r).sum(dim=1)/(result.size()[1])
@@ -112,11 +120,12 @@ def main():
     for i, s in enumerate(custom_sigmas):
         plt.plot(rs, Rs_vals.select(dim=1, index=i), label=f'sigma = {s}')
     
-    plt.title('Certified Accuracy vs radius of LeNet on MNIST test set')
+    plt.title(f'Certified Accuracy vs radius on MNIST test set (N={N})')
     plt.xlabel('Radius')
     plt.ylim([0.0, 1.0])
     plt.ylabel('Certified Accuracy')
     plt.legend()
+    plt.grid(True)
     plt.show()
 
 if __name__ == '__main__':        
