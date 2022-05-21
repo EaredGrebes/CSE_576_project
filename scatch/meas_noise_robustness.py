@@ -3,6 +3,7 @@ import sys
 from math import sqrt
 import numpy as np
 from statistics import NormalDist
+from scipy.stats import binomtest
 import tqdm
 import matplotlib.pyplot as plt
 from statsmodels.stats.proportion import proportion_confint
@@ -50,7 +51,7 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
     return R_vals # Return R for every noise level and image
 
 @functools.lru_cache()
-def lower_conf_bound(k, n, alpha):
+def lower_conf_bound_old(k, n, alpha):
     max_bnd = alpha**(1/n)
     if k==n:
         return max_bnd
@@ -59,8 +60,21 @@ def lower_conf_bound(k, n, alpha):
         z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
         ndist_bnd = p - z*sqrt( p*(1-p) / n )
         return min(max_bnd, ndist_bnd)
-        # TODO make this work at all?
+        # Due to some bug, this doesn't work at all!
         #return proportion_confint(k, n, alpha=alpha*2, method='binom_test')[0]
+
+@functools.lru_cache()
+def lower_conf_bound(k, n, alpha):
+    # Binary search to invert binomial tests. A bit ridiculous...
+    BIN_SEARCH_ITRS = 24 # Enough for 32-bit floating-point mantissa
+    prob = 0.5
+    for i in range(BIN_SEARCH_ITRS):
+        z = binomtest(k, n, p=prob, alternative='greater').pvalue
+        if z < alpha: prob += (1/(2**(i+1)))
+        else:         prob -= (1/(2**(i+1)))
+        #print(f'prob = {prob}, resulting p-value = {z}')
+    prob -= (1/(2**(BIN_SEARCH_ITRS))) # Subtract the maximum search error
+    return prob
 
 # Demo using model from MNIST_CNN_script.py
 def main():
@@ -88,7 +102,7 @@ def main():
     torch.save(result, 'data/robustness_result.pt')
 
     # Compute proportion of images within robustness radius
-    rs = np.linspace(0.0, 3.0, num=400)
+    rs = np.linspace(0.0, 3.0, num=1000)
     Rs_vals = torch.empty((len(rs), len(custom_sigmas)))
     for i, r in enumerate(rs):
         Rs_vals[i] = (result>r).sum(dim=1)/(result.size()[1])
