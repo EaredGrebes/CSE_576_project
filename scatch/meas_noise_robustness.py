@@ -9,33 +9,43 @@ import matplotlib.pyplot as plt
 from statsmodels.stats.proportion import proportion_confint
 import functools
 
+device = 'cpu'
+
 DEFAULT_SIGMAS = (0.12, 0.25, 0.50, 1.00, 1.25)
 
-def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0.001, sigmas=DEFAULT_SIGMAS):
-    # Get output shape by passing in one test image
-    nn_out_size = nn_model(test_data).size() # num_images x num_classes
+@torch.no_grad()
+def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=DEFAULT_SIGMAS):
+    # Get output shape
+    nn_out_size = (len(dataloader.dataset), len(dataloader.dataset.classes))
+    batch_size = dataloader.batch_size # Get number of batches
 
     R_vals = torch.empty((len(sigmas), nn_out_size[0])) # num_sigmas x num_images
     # For each noise level sigma:
     for sigma_idx, sigma in enumerate(sigmas):
         # For N Monte-Carlo iterations:
-        print(f'Sigma = {sigma}:')        
+        print(f'Sigma = {sigma}:')
         mc_y_pred = torch.zeros(nn_out_size, dtype=torch.int32) # num_images x num_classes
         for itr in tqdm.tqdm(range(MC_itr), desc='AWGN samples'):
-            # pre-process test_data with awgn
-            test_data_noised = test_data.detach()
-            test_data_noised.add_(sigma**2*torch.randn(test_data_noised.size()))
-            y_pred = nn_model(test_data_noised) # make predictions
-            # Save predictions            
-            maxes = torch.argmax(y_pred, dim=1) # num_images x 1 (prediction per image)
-            for idx in range(maxes.numel()):
-                mc_y_pred[idx][maxes[idx].item()] += 1 # Add to prediction count for each image
+            # For each batch
+            for batch_idx, (data, lab) in enumerate(dataloader):
+                data = data.to(device)
+                # pre-process test_data with awgn
+                test_data_noised = data.detach()
+                test_data_noised.add_(sigma**2*torch.randn(test_data_noised.size()))
+                y_pred = nn_model(test_data_noised) # make predictions
+                # Save predictions
+                maxes = torch.argmax(y_pred, dim=1) # num_images x 1 (prediction per image)
+                # print(f'maxes shape = {maxes.shape}')
+                for idx in range(maxes.numel()):
+                    # print(f'len = {batch_size}, b_idx = {batch_idx}, idx = {idx}')
+                    mc_y_pred[batch_size*batch_idx+idx][maxes[idx].item()] += 1 # Add to prediction count for each image
 
         # Print the total prediction accuracy
         total_correct = 0
-        for idx in range(test_targets.numel()):
-            total_correct += mc_y_pred[idx][test_targets[idx].item()].item()
-        percent_correct = float(total_correct)/(MC_itr*test_targets.numel())*100.0
+        targs = dataloader.dataset.targets
+        for idx in range(targs.numel()):
+            total_correct += mc_y_pred[idx][targs[idx].item()].item()
+        percent_correct = float(total_correct)/(MC_itr*targs.numel())*100.0
         print(f'Prediction Accuracy (under AWGN): {round(percent_correct, 2)}%')
         
         for idx in tqdm.tqdm(range(mc_y_pred.size()[0]), desc='Calculating radii'): # Compute and save R for every image
@@ -82,15 +92,17 @@ def main():
                                                   transform=torchvision.transforms.Compose([
                                                   torchvision.transforms.ToTensor(),
                                                   torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
-    test_loader = torch.utils.data.DataLoader(torch_test_dataset, batch_size = len(torch_test_dataset), shuffle=True)
-    test_data, test_targets = get_next_data_batch(test_loader, device)
-    print('Test data loaded.')
+
+    test_loader = torch.utils.data.DataLoader(torch_test_dataset, 
+                                              batch_size = 10000, 
+                                              shuffle=False)
+    print(f'Test data loaded, batch size = {test_loader.batch_size}')
     print()
 
     # Estimate robustness
     custom_sigmas = (0.25, 0.50, 1.00, 1.25)
     N = 200
-    result = meas_noise_robustness(model, test_data, test_targets,
+    result = meas_noise_robustness(model, test_loader,
                                    MC_itr=N, alpha=0.001, sigmas=custom_sigmas)
     print('Evaluation complete!')
     torch.save(result, 'data/robustness_result.pt')
@@ -117,4 +129,6 @@ def main():
 if __name__ == '__main__':        
     sys.path.insert(0, './scatch')
     from MNIST_CNN_script import *
+    if torch.cuda.is_available(): device = 'cuda' 
+    print(f'Using device "{device}"')
     main()
