@@ -14,8 +14,6 @@ DEFAULT_SIGMAS = (0.12, 0.25, 0.50, 1.00, 1.25)
 def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0.001, sigmas=DEFAULT_SIGMAS):
     # Get output shape by passing in one test image
     nn_out_size = nn_model(test_data).size() # num_images x num_classes
-    # print(f'nn_model output size = {nn_out_size}')
-    # print(f'targets output size = {test_targets.size()}')
 
     R_vals = torch.empty((len(sigmas), nn_out_size[0])) # num_sigmas x num_images
     # For each noise level sigma:
@@ -32,13 +30,6 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
             maxes = torch.argmax(y_pred, dim=1) # num_images x 1 (prediction per image)
             for idx in range(maxes.numel()):
                 mc_y_pred[idx][maxes[idx].item()] += 1 # Add to prediction count for each image
-        
-        # d = mc_y_pred.select(0, 0)
-        # print(f'Image 0: counts = {d.tolist()}')
-        # test_lb = lower_conf_bound(d.max().item(), MC_itr, alpha)
-        # print(f'Image 0: lower_bd({d.max().item()}, {MC_itr}) = {test_lb}')
-        # if test_lb > 0.5: print(f'Image 0: radius = {sigma*NormalDist().inv_cdf(test_lb)}')
-        # continue
 
         # Print the total prediction accuracy
         total_correct = 0
@@ -50,8 +41,6 @@ def meas_noise_robustness(nn_model, test_data, test_targets, MC_itr=100, alpha=0
         for idx in tqdm.tqdm(range(mc_y_pred.size()[0]), desc='Calculating radii'): # Compute and save R for every image
             max_cnt = torch.max(mc_y_pred.select(0, idx)).item()
             pa = lower_conf_bound(max_cnt, MC_itr, alpha)
-            # R = -1.0
-            # if pa > 0.5: R = sigma*NormalDist().inv_cdf(pa) # TODO remove?
             R = sigma*NormalDist().inv_cdf(pa)
             R_vals[sigma_idx][idx] = R
 
@@ -67,8 +56,6 @@ def lower_conf_bound_old(k, n, alpha):
         z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
         ndist_bnd = p - z*sqrt( p*(1-p) / n )
         return min(max_bnd, ndist_bnd)
-        # Due to some bug, this doesn't work at all!
-        #return proportion_confint(k, n, alpha=alpha*2, method='binom_test')[0]
 
 @functools.lru_cache() # Cache results for speed
 def lower_conf_bound(k, n, alpha):
@@ -79,7 +66,6 @@ def lower_conf_bound(k, n, alpha):
         z = binomtest(k, n, p=prob, alternative='greater').pvalue
         if z < alpha: prob += (1/(2**(i+1)))
         else:         prob -= (1/(2**(i+1)))
-        #print(f'prob = {prob}, resulting p-value = {z}')
     prob -= (1/(2**(BIN_SEARCH_ITRS))) # Subtract the maximum search error
     return prob
 
