@@ -256,7 +256,7 @@ class DG_CNNModel(nn.Module):
         
         return out
     
-#------------------------------------------------------------------------------
+    
 # torchvision resnet
 def binaryResNet():
     
@@ -265,6 +265,7 @@ def binaryResNet():
     model.fc = nn.Linear(512, num_classes)
     return model
 
+# torchvission VGG (this model is too big for my GPU? I dunno)
 def binaryVGGNet():
     
     model = models.vgg11_bn()

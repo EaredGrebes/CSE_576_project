@@ -7,10 +7,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
-import cv2 
-from random import shuffle 
+import cv2  
 import seaborn as sns
-
+from os.path import exists
+import time
 
 #------------------------------------------------------------------------------
 # MNIST functions
@@ -88,7 +88,7 @@ def load_cats_dogs_data(train_batch_size, img_size, dataFolder):
     
     train_size = 22000
     val_size   = 256
-    test_size  = 256
+    test_size  = 1024
     
     # 25000 total images, don't exceed that (GPU issues)
     total_size = train_size + val_size + test_size
@@ -98,6 +98,8 @@ def load_cats_dogs_data(train_batch_size, img_size, dataFolder):
      
     # spot-check some data 
     #plot_image_list_count(train_image_list)
+    
+    # load and process raw data
     raw_data = process_raw_image_data(train_image_list, dataFolder, img_size)
     
     # split data into train, validation, and test
@@ -127,15 +129,29 @@ def binary_label(img):
     
     
 def process_raw_image_data(data_image_list, data_folder, img_size):
-    data_list = []
-    for img in tqdm.tqdm(data_image_list):
+    
+    file = data_folder + '/raw_data.npz'
+    if not exists(file):
+        print('numpy file does not exist, processing images')
+        data_list = []
+        for img in tqdm.tqdm(data_image_list):
+            
+            path = os.path.join(data_folder,img)
+            label = binary_label(img)
+            img = cv2.imread(path,cv2.IMREAD_COLOR)
+            img = cv2.resize(img, (img_size,img_size))
+            data_list.append([np.array(img), np.array(label)])
+            
+        np.random.shuffle(data_list)  # very important to shuffle this data
+        np.savez(file, data_list = data_list)
         
-        path = os.path.join(data_folder,img)
-        label = binary_label(img)
-        img = cv2.imread(path,cv2.IMREAD_COLOR)
-        img = cv2.resize(img, (img_size,img_size))
-        data_list.append([np.array(img), np.array(label)])
-    shuffle(data_list)
+    else:
+        print('loading file from numpy')
+        tic = time.perf_counter()
+        filez = np.load(file, allow_pickle=True)
+        data_list = filez['data_list']
+        print(f'loaded data in {time.perf_counter() - tic} sec')
+             
     return data_list
 
 
@@ -148,7 +164,7 @@ def images_to_torch_batch(raw_data, batch_size, device):
     else:
         intervals = np.array([0, N])
     
-    print(intervals)
+    #print(intervals)
     
     im_h, im_w, im_c = raw_data[0][0].shape
     

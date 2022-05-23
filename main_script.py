@@ -13,7 +13,6 @@ import gc
 # custom functions
 import data_loading_functions as datFun
 import classifier_models as classFun
-import ResNet_model as resFun
 
 np.random.seed(1)
 torch.manual_seed(1)
@@ -21,6 +20,7 @@ torch.manual_seed(1)
 plt.close('all')
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
 print(device)
 
 script_folder_path = os.path.dirname(os.path.abspath(__file__))
@@ -28,34 +28,23 @@ script_folder_path = os.path.dirname(os.path.abspath(__file__))
 #------------------------------------------------------------------------------
 # configuration
 load_data   = True  # if you run the script in the same worspace, you don't need to load the data each time
-force_train = True
+force_train = False
 
 # evaluate ideas against the Cats and Dogs dataset
-CD_config1 = {
-'name':          'cats_dogs',
-'epochs':        20,
-'learning_rate': 0.0001,
-'optimizer':     'Adam',
-'img_size':      224,
-'batch_size':    32,
-'data_folder':   script_folder_path + '/data/train',
-'load_function': datFun.load_cats_dogs_data,
-'model':         classFun.binaryVGGNet}
-
-CD_config2 = {
-'name':          'cats_dogs',
-'epochs':        20,
-'learning_rate': 0.001,
+CD_config = {
+'name':          'cats_dogs_resNet18',
+'epochs':        40,
+'learning_rate': 0.0005,
 'optimizer':     'Adam',
 'img_size':      224,
 'batch_size':    128,
-'data_folder':   script_folder_path + '/data/train',
+'data_folder':   script_folder_path + '/data/dogs_cats/train',
 'load_function': datFun.load_cats_dogs_data,
 'model':         classFun.binaryResNet}
 
 # for quicker code development, use MNIST
 MNIST_config = {
-'name':          'MNIST',
+'name':          'MNIST_LeNet',
 'epochs':        10,
 'learning_rate': 0.001,
 'optimizer':     'Adam',
@@ -66,10 +55,8 @@ MNIST_config = {
 'model':         classFun.my_LeNet_Model}
 
 # select which configuration to run
-
-config = CD_config2
-#config = CD_config2
-#config = MNIST_config
+#config = CD_config
+config = MNIST_config
 
 #------------------------------------------------------------------------------
 # load data
@@ -105,7 +92,6 @@ plt.figure()
 plt.plot(accuracy_val_list)
 plt.title('validation accuracy')
 plt.xlabel('training epoch')
-
 
 #------------------------------------------------------------------------------
 # evaluate test data performance
