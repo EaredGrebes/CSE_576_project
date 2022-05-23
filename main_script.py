@@ -8,10 +8,12 @@ import os
 import cv2 
 from random import shuffle 
 import seaborn as sns
+import gc
 
 # custom functions
 import data_loading_functions as datFun
-import models as nnModels
+import classifier_models as classFun
+import ResNet_model as resFun
 
 np.random.seed(1)
 torch.manual_seed(1)
@@ -25,106 +27,72 @@ script_folder_path = os.path.dirname(os.path.abspath(__file__))
 
 #------------------------------------------------------------------------------
 # configuration
-config_dict = {
-'name':          'baseline',
-'epochs':        10,
-'learning_rate': 0.00001,
+load_data   = True  # if you run the script in the same worspace, you don't need to load the data each time
+force_train = True
+
+# evaluate ideas against the Cats and Dogs dataset
+CD_config1 = {
+'name':          'cats_dogs',
+'epochs':        20,
+'learning_rate': 0.0001,
 'optimizer':     'Adam',
 'img_size':      224,
-'batch_size':    256,
-'data_folder':   script_folder_path + '/data/train'}
+'batch_size':    32,
+'data_folder':   script_folder_path + '/data/train',
+'load_function': datFun.load_cats_dogs_data,
+'model':         classFun.binaryVGGNet}
 
+CD_config2 = {
+'name':          'cats_dogs',
+'epochs':        20,
+'learning_rate': 0.001,
+'optimizer':     'Adam',
+'img_size':      224,
+'batch_size':    128,
+'data_folder':   script_folder_path + '/data/train',
+'load_function': datFun.load_cats_dogs_data,
+'model':         classFun.binaryResNet}
+
+# for quicker code development, use MNIST
+MNIST_config = {
+'name':          'MNIST',
+'epochs':        10,
+'learning_rate': 0.001,
+'optimizer':     'Adam',
+'img_size':      28,
+'batch_size':    256,
+'data_folder':   script_folder_path + '/data/',
+'load_function': datFun.load_MNIST_data,
+'model':         classFun.my_LeNet_Model}
+
+# select which configuration to run
+
+config = CD_config2
+#config = CD_config2
+#config = MNIST_config
 
 #------------------------------------------------------------------------------
 # load data
-
-
-
+if load_data:
+    print('loading data')
+    # train data is batched, val and test are not
+    train_data,    \
+    train_targets, \
+    val_data,      \
+    val_targets,   \
+    test_data,     \
+    test_targets = config['load_function'](config['batch_size'],\
+                                           config['img_size'],  \
+                                           config['data_folder'])
 
 #------------------------------------------------------------------------------
-# train and evaluate network
+# load model (or train from scratch)
+ 
+nnModel, \
+loss_val_list, \
+loss_train_list, \
+accuracy_val_list = classFun.load_model(train_data, train_targets, val_data, val_targets, config, device, force_train)    
 
-# the neural network object
-nnModel = CNNModel()
-nnModel = nnModel.to(device)
-  
-opt_dict = {'SGD': torch.optim.SGD(nnModel.parameters(), lr=cfg['learning_rate']),
-            'Adam': torch.optim.Adam(nnModel.parameters(), lr = cfg['learning_rate'])}
-   
-optimizer = opt_dict[cfg['optimizer']]
-loss_fn   = nn.CrossEntropyLoss()
-
-# train model
-loss_train_list   = np.zeros((cfg['epochs'],))
-loss_val_list     = np.zeros((cfg['epochs'],))
-accuracy_val_list = np.zeros((cfg['epochs'],))
-
-# epoch - one loop through all the data points
-for epoch in tqdm.trange(cfg['epochs']):
-#for epoch in range(cfg['epochs']):
-    
-    # some layers (like dropout) have different behavior when training and 
-    # evaluating the model, switch to train mode
-    nnModel.train()
-    
-    # batch update the weights
-    for X_train, y_train in zip(train_data, train_targets):
-        
-        X_train = X_train.to(device)
-        y_train = y_train.to(device)
-        
-        optimizer.zero_grad()
-        y_pred = nnModel(X_train)
-        loss = loss_fn(y_pred, y_train)
-        loss.backward()
-        optimizer.step()
-        
-    # evaluate loss and accuracy on validation data
-    with torch.no_grad():
-        
-        nnModel.eval()
-        y_val_pred = nnModel(val_data) 
-        loss_val = loss_fn(y_val_pred, val_targets)
-        
-        # accuracy
-        correct = (torch.argmax(y_val_pred, dim=1) == val_targets).type(torch.FloatTensor)
-        acc = correct.cpu().mean()
-        accuracy_val_list[epoch] = acc.item()
-    
-    loss_val_list[epoch] = loss_val.detach().item()
-    loss_train_list[epoch] = loss.detach().item()
-    
-# fee up GPU mem
-del train_data
-del train_targets
-del X_train
-del y_train
-
-# evaluate test data performance
-
-test_data = test_data[0]
-test_targets = test_targets[0]
-y_targets = test_targets.cpu().detach().numpy()
-
-nnModel.plot_filters = True
-y_test_pred = nnModel(test_data) 
-y_test_pred = torch.softmax(y_test_pred, dim=1)
-y_test_pred = y_test_pred.cpu().detach().numpy()
-pred = np.argmax(y_test_pred, axis=1)
-prob = np.max(y_test_pred, axis = 1)
-
-correct = (pred == y_targets)
-test_accuracy = correct.mean()  
-  
-print('final training batch loss: {}'.format(loss.item()))
-print('final validation accuracy: {}'.format(acc.item()))
-print('Test dataset accuracy: {}'.format(test_accuracy))
-
-# plot some test predictions
-for sample_index in range(10):
-    title = 'label: {} predict: {}, probability: {:.2f}'.format(y_targets[sample_index], pred[sample_index], prob[sample_index])
-    plot_torch_image(test_data[sample_index,:,:,:], title)
-        
 # plot loss and accuracy curves from training
 plt.figure()
 plt.plot(loss_train_list)
@@ -139,5 +107,24 @@ plt.title('validation accuracy')
 plt.xlabel('training epoch')
 
 
-torch.cuda.empty_cache() 
+#------------------------------------------------------------------------------
+# evaluate test data performance
+y_targets = test_targets.detach().numpy()
+
+test_data = test_data.to(device)
+y_test_pred = nnModel(test_data) 
+y_test_pred = torch.softmax(y_test_pred, dim=1)
+y_test_pred = y_test_pred.cpu().detach().numpy()
+pred = np.argmax(y_test_pred, axis=1)
+prob = np.max(y_test_pred, axis = 1)
+
+correct = (pred == y_targets)
+test_accuracy = correct.mean()  
+print('Test dataset accuracy: {}'.format(test_accuracy))
+
+# plot some test predictions
+for sample_index in range(10):
+    title = 'label: {} predict: {}, probability: {:.2f}'.format(y_targets[sample_index], pred[sample_index], prob[sample_index])
+    datFun.plot_torch_image(test_data[sample_index,:,:,:], title)
+        
 

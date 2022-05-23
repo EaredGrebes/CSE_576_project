@@ -14,6 +14,50 @@ import seaborn as sns
 
 #------------------------------------------------------------------------------
 # MNIST functions
+
+# main data loading function
+def load_MNIST_data(train_batch_size, img_size, dataFolder):
+    
+    train_val_split = 0.8
+
+    # Use the following code to load and normalize the dataset
+    torch_train_dataset = torchvision.datasets.MNIST(dataFolder, train=True, download=True,
+                                                    transform=torchvision.transforms.Compose([
+                                                      torchvision.transforms.ToTensor(),
+                                                      torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
+
+    # split the training data into training and validation
+    train_size = len(torch_train_dataset)
+    new_train_size = int(train_val_split * train_size)
+    val_size = train_size - new_train_size
+
+    train_dataset, val_dataset = torch.utils.data.random_split(torch_train_dataset, [new_train_size, val_size])
+
+    # use batches for training
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size = train_batch_size, shuffle=True)
+    train_data, train_targets = split_data_targets(train_loader)
+
+    # use full data for validation set (no batches)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size = len(val_dataset), shuffle=True)
+    val_data, val_targets = split_data_targets(val_loader)
+
+    # use full data for test set (no batches)
+    torch_test_dataset = torchvision.datasets.MNIST(dataFolder, train=False, download=True,
+                                                    transform=torchvision.transforms.Compose([
+                                                      torchvision.transforms.ToTensor(),
+                                                      torchvision.transforms.Normalize((0.1307,), (0.3081,))]))
+
+    test_loader = torch.utils.data.DataLoader(torch_test_dataset, batch_size = len(torch_test_dataset), shuffle=True)
+    test_data, test_targets = split_data_targets(test_loader)
+    
+    # val and test data are single batches
+    val_data    = val_data[0]
+    val_targets = val_targets[0]
+    test_data    = test_data[0]
+    test_targets = test_targets[0]
+      
+    return train_data, train_targets, val_data, val_targets, test_data, test_targets
+
 def get_next_data_batch(loader, device):
     
     batches = enumerate(loader)
@@ -25,13 +69,13 @@ def get_next_data_batch(loader, device):
     return data, targets
 
 
-def convert_batches_to_device(loader, device):
+def split_data_targets(loader):
     
     batch_data = []
     batch_targets = []
     for batch_idx, (data, targets) in enumerate(loader):
-        batch_data.append(data.to(device))
-        batch_targets.append(targets.to(device))
+        batch_data.append(data)
+        batch_targets.append(targets)
         
     return batch_data, batch_targets
 
@@ -40,22 +84,21 @@ def convert_batches_to_device(loader, device):
 # Cats and Dogs functions
 
 # main data loading function
-def load_cats_dogs_data(train_batch_size, img_size, trainFolder):
+def load_cats_dogs_data(train_batch_size, img_size, dataFolder):
     
-    train_size = 24000
-    val_size = 500
-    test_size = 500
+    train_size = 22000
+    val_size   = 256
+    test_size  = 256
     
     # 25000 total images, don't exceed that (GPU issues)
     total_size = train_size + val_size + test_size
     
     # only use train data, test data is un-labeled
-    train_image_list = os.listdir(trainFolder)[0:total_size]
+    train_image_list = os.listdir(dataFolder)[0:total_size]
      
     # spot-check some data 
     #plot_image_list_count(train_image_list)
-    
-    raw_data = process_raw_image_data(train_image_list, trainFolder)
+    raw_data = process_raw_image_data(train_image_list, dataFolder, img_size)
     
     # split data into train, validation, and test
     raw_data_train = raw_data[0:train_size]
@@ -75,7 +118,7 @@ def load_cats_dogs_data(train_batch_size, img_size, trainFolder):
     test_data    = test_data[0]
     test_targets = test_targets[0]
     
-    return train_data, train_targets, val_data, val_targets, 
+    return train_data, train_targets, val_data, val_targets, test_data, test_targets
 
 def binary_label(img):
     pet = img.split('.')[-3]
@@ -91,7 +134,7 @@ def process_raw_image_data(data_image_list, data_folder, img_size):
         label = binary_label(img)
         img = cv2.imread(path,cv2.IMREAD_COLOR)
         img = cv2.resize(img, (img_size,img_size))
-        data_list.append([np.array(img),np.array(label)])
+        data_list.append([np.array(img), np.array(label)])
     shuffle(data_list)
     return data_list
 
@@ -119,9 +162,9 @@ def images_to_torch_batch(raw_data, batch_size, device):
         
         for ii, batch_ind in enumerate(batch_indexes):
             
-            X_tensor[ii,0,:,:] = torch.from_numpy(raw_data[batch_ind][0][:,:,2])
-            X_tensor[ii,1,:,:] = torch.from_numpy(raw_data[batch_ind][0][:,:,1])
-            X_tensor[ii,2,:,:] = torch.from_numpy(raw_data[batch_ind][0][:,:,0])
+            X_tensor[ii,0,:,:] = torch.from_numpy(raw_data[batch_ind][0][:,:,2]/255)
+            X_tensor[ii,1,:,:] = torch.from_numpy(raw_data[batch_ind][0][:,:,1]/255)
+            X_tensor[ii,2,:,:] = torch.from_numpy(raw_data[batch_ind][0][:,:,0]/255)
             
             y_vector[ii] = torch.from_numpy(raw_data[batch_ind][1])
          
@@ -131,6 +174,10 @@ def images_to_torch_batch(raw_data, batch_size, device):
     
     return torch_data, torch_targets
     
+
+#------------------------------------------------------------------------------
+# Random functions with no place, TODO: figure out what to do with visualization
+# functions?
 
 def plot_image_list_count(data_image_list):
     labels = []
@@ -144,11 +191,14 @@ def plot_torch_image(tensor, title):
     
     np_tensor = tensor.cpu().detach().numpy()
     im_c, im_h, im_w = np_tensor.shape
-    np_tensor2 = np.stack((np_tensor[0,:,:], np_tensor[1,:,:], np_tensor[2,:,:]), axis = 2)
+    if im_c == 3:
+        np_tensor2 = np.stack((np_tensor[0,:,:], np_tensor[1,:,:], np_tensor[2,:,:]), axis = 2)
+    else:
+        np_tensor2 = np_tensor[0,:,:]
     
-    plt.figure(title)
+    plt.figure()
     plt.title(title)
-    plt.imshow(np_tensor2/255)
+    plt.imshow(np_tensor2)
     
 def plot_torch_feature_map(tensor, title): 
     mat = tensor.cpu().detach().numpy()
