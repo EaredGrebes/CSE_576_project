@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as tfs
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 
 import classifier_models as cm
@@ -48,7 +49,7 @@ def main():
                                                    generator=torch.Generator().manual_seed(42))[0]
     cd_data_subset.classes = cd_data.classes # forward classes
     # Generate target index list by comparing to class name
-    cd_data_subset.targets = [l for (d, l) in cd_data_subset]
+    cd_data_subset.targets = torch.tensor([l for (d, l) in cd_data_subset])
     data_loader = DataLoader(cd_data_subset, batch_size=batch_size, shuffle=False)
     print(f'Cats-and-dogs data loaded. ({len(cd_data_subset)} images only)')
     # for d, l in data_loader:
@@ -65,7 +66,7 @@ def main():
     print('Loaded model binaryResNet.')
 
     # Estimate robustness
-    custom_sigmas = (0.25, 0.50, 1.00, 1.25)
+    custom_sigmas = (0, 0.25, 0.50, 1.00)
     N = 200
     result = mr.meas_noise_robustness(model, data_loader,
                                       MC_itr=N, alpha=0.001, sigmas=custom_sigmas, 
