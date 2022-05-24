@@ -43,7 +43,7 @@ class DogsCatsDataset(Dataset):
                     self.labels.append(1)
 
         self.num_samples = len(self.data_keys)
-                
+
     def __len__(self):
         return self.num_samples
 
