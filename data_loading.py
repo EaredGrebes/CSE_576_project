@@ -27,27 +27,36 @@ class DogsCatsDataset(Dataset):
         self.directory = "data/dogs_cats/"
         self.h = height
         self.w = width
-        self.data_keys = []
+        self.data_keys_list = []
         self.labels = []
+        self.map_fn_2_idx = {}
+        self.map_idx_2_fn = {}
 
         with open(self.directory + "dc_train_filenames.txt", "r") as f:
             lines = f.readlines()
 
-            for line in lines:
-                line = line.strip()
-
-                self.data_keys.append(line)
-                if line[:3] == "cat":
+            for i, line in enumerate(lines):
+                filename = line.strip()
+                self.map_fn_2_idx[filename] = i
+                self.map_idx_2_fn[i] = filename
+                self.data_keys_list.append(filename)
+                if filename[:3] == "cat":
                     self.labels.append(0)
                 else:
                     self.labels.append(1)
 
-        self.num_samples = len(self.data_keys)
+        self.num_samples = len(self.data_keys_list)
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, index):
-        path = self.directory + "train/" + self.data_keys[index]
+        path = self.directory + "train/" + self.data_keys_list[index]
         img = read_image(path)
         return resize(img, [self.h, self.w]), self.labels[index]
+
+    def get_filename(self, index):
+        return self.map_idx_2_fn[index]
+
+    def get_index(self, filename):
+        return self.map_fn_2_idx[filename]
