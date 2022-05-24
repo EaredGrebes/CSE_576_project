@@ -26,7 +26,7 @@ class CatsDogsDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, self.flist[idx])
         image = torchvision.io.read_image(img_path)
-        label = self.flist[idx][0:3]
+        label = int(self.flist[idx][0:3]==self.classes[1])
         if self.transform:
             image = self.transform(image)
         if self.target_transform:
@@ -37,16 +37,18 @@ def main():
     # Data can be downloaded from Kaggle: 
     # https://www.kaggle.com/competitions/dogs-vs-cats/data
     cats_and_dogs_data_dir = './data/train'
-    sized_img_width        = 224 # Width and height to resize all images too
-    val_set_size           = 64 # 256 # Number of images to use in validation set (chosen randomly)
-    batch_size             = 128
+    sized_img_width        = 224 # Width and height to resize all images to
+    val_set_size           =  64 # 256 # Number of images to use in validation set (chosen randomly)
+    batch_size             = 128 # Images to run at once
 
     data_tf = tfs.Compose([tfs.Resize((sized_img_width, sized_img_width))])
     cd_data = CatsDogsDataset(cats_and_dogs_data_dir, transform=data_tf)
     cd_data_subset = torch.utils.data.random_split(cd_data, 
                                                    [val_set_size, len(cd_data)-val_set_size], 
                                                    generator=torch.Generator().manual_seed(42))[0]
-    cd_data_subset.classes = cd_data.classes # Not sure why this is needed...
+    cd_data_subset.classes = cd_data.classes # forward classes
+    # Generate target index list by comparing to class name
+    cd_data_subset.targets = [l for (d, l) in cd_data_subset]
     data_loader = DataLoader(cd_data_subset, batch_size=batch_size, shuffle=False)
     print(f'Cats-and-dogs data loaded. ({len(cd_data_subset)} images only)')
     # for d, l in data_loader:
