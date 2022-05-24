@@ -40,23 +40,20 @@ def main():
     cats_and_dogs_data_dir = './data/train'
     sized_img_width        = 224 # Width and height to resize all images to
     val_set_size           =  64 # 256 # Number of images to use in validation set (chosen randomly)
-    batch_size             = 128 # Images to run at once
+    batch_size             =   1 # Images to run at once
 
     data_tf = tfs.Compose([tfs.Resize((sized_img_width, sized_img_width))])
     cd_data = CatsDogsDataset(cats_and_dogs_data_dir, transform=data_tf)
     cd_data_subset = torch.utils.data.random_split(cd_data, 
                                                    [val_set_size, len(cd_data)-val_set_size], 
                                                    generator=torch.Generator().manual_seed(42))[0]
-    cd_data_subset.classes = cd_data.classes # forward classes
-    # Generate target index list by comparing to class name
-    cd_data_subset.targets = torch.tensor([l for (d, l) in cd_data_subset])
     data_loader = DataLoader(cd_data_subset, batch_size=batch_size, shuffle=False)
     print(f'Cats-and-dogs data loaded. ({len(cd_data_subset)} images only)')
     # for d, l in data_loader:
     #     print(f'batch 0 labels are: {l}')
     #     idx = 6
     #     plt.imshow(d[idx].sum(dim=0), cmap='gray')
-    #     plt.title(f'{l[idx}')
+    #     plt.title(f'Class = {l[idx}')
     #     plt.show()
     #     break
 

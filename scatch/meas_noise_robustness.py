@@ -15,12 +15,13 @@ DEFAULT_SIGMAS = (0.12, 0.25, 0.50, 1.00, 1.25)
 
 @torch.no_grad()
 def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=DEFAULT_SIGMAS, device=device):
-    # Get output shape
-    nn_out_size = (len(dataloader.dataset), len(dataloader.dataset.classes)) # num_images x num_classes
-    batch_size = dataloader.batch_size # Get number of batches
-    # print(f'nn_out_size: {nn_out_size}, batch_size: {batch_size}')
+    # Get output shape (check both dataloader.dataset and dataloader.dataset.dataset for 'classes')
+    classes = dataloader.dataset.classes if hasattr(dataloader.dataset, 'classes') else dataloader.dataset.dataset.classes
+    nn_out_size = (len(dataloader.dataset), len(classes)) # num_images x num_classes
+    batch_size = dataloader.batch_size # Get images in batch
 
     R_vals = torch.empty((len(sigmas), nn_out_size[0])) # num_sigmas x num_images
+    targs = torch.empty(nn_out_size[0], dtype=torch.int16) # Num images long
     # For each noise level sigma:
     for sigma_idx, sigma in enumerate(sigmas):
         # For N Monte-Carlo iterations:
@@ -35,15 +36,15 @@ def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=
                 test_data_noised.add_(sigma**2*torch.randn(test_data_noised.size()))
                 y_pred = nn_model(test_data_noised) # make predictions
                 # Save predictions
+                global_idx = batch_size*batch_idx
                 maxes = torch.argmax(y_pred, dim=1) # num_images x 1 (prediction per image)
-                # print(f'maxes shape = {maxes.shape}')
                 for idx in range(maxes.numel()):
-                    # print(f'len = {batch_size}, b_idx = {batch_idx}, idx = {idx}')
-                    mc_y_pred[batch_size*batch_idx+idx][maxes[idx].item()] += 1 # Add to prediction count for each image
+                    mc_y_pred[global_idx+idx][maxes[idx].item()] += 1 # Add to prediction count for each image
+                # Save labels
+                targs[(global_idx):(global_idx+batch_size)] = lab
 
         # Print the total prediction accuracy
         total_correct = 0
-        targs = dataloader.dataset.targets
         for idx in range(targs.numel()):
             total_correct += mc_y_pred[idx][targs[idx].item()].item()
         percent_correct = float(total_correct)/(MC_itr*targs.numel())*100.0
