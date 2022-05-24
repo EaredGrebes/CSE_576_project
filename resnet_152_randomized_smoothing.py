@@ -35,7 +35,7 @@ print()
 custom_sigmas = (0.25, 0.50, 1.00, 1.25)
 N = 100
 result = mr.meas_noise_robustness(model, data_loader,
-                               MC_itr=N, alpha=0.001, sigmas=custom_sigmas)
+                               MC_itr=N, alpha=0.001, sigmas=custom_sigmas, device=device)
 print('Evaluation complete!')
 torch.save(result, 'data/imagenet_robustness_result.pt')
 

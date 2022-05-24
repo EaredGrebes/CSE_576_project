@@ -14,10 +14,11 @@ device = 'cpu'
 DEFAULT_SIGMAS = (0.12, 0.25, 0.50, 1.00, 1.25)
 
 @torch.no_grad()
-def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=DEFAULT_SIGMAS):
+def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=DEFAULT_SIGMAS, device=device):
     # Get output shape
-    nn_out_size = (len(dataloader.dataset), len(dataloader.dataset.classes))
+    nn_out_size = (len(dataloader.dataset), len(dataloader.dataset.classes)) # num_images x num_classes
     batch_size = dataloader.batch_size # Get number of batches
+    # print(f'nn_out_size: {nn_out_size}, batch_size: {batch_size}')
 
     R_vals = torch.empty((len(sigmas), nn_out_size[0])) # num_sigmas x num_images
     # For each noise level sigma:
@@ -30,7 +31,7 @@ def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=
             for batch_idx, (data, lab) in enumerate(dataloader):
                 data = data.to(device)
                 # pre-process test_data with awgn
-                test_data_noised = data.detach()
+                test_data_noised = data.detach().float()
                 test_data_noised.add_(sigma**2*torch.randn(test_data_noised.size()))
                 y_pred = nn_model(test_data_noised) # make predictions
                 # Save predictions
