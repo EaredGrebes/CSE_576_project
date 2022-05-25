@@ -63,7 +63,7 @@ def main():
     print('Loaded model binaryResNet.')
 
     # Estimate robustness
-    custom_sigmas = (0, 0.25, 0.50, 1.00)
+    custom_sigmas = (3.0, 6.0, 9.0)
     N = 200
     result = mr.meas_noise_robustness(model, data_loader,
                                       MC_itr=N, alpha=0.001, sigmas=custom_sigmas, 
@@ -72,7 +72,7 @@ def main():
     torch.save(result, 'data/imagenet_robustness_result.pt')
 
     # Compute proportion of images within robustness radius
-    rs = np.linspace(0.0, 5.0, num=1000)
+    rs = np.linspace(0.0, 8.0, num=1000)
     Rs_vals = torch.empty((len(rs), len(custom_sigmas)))
     for i, r in enumerate(rs):
         Rs_vals[i] = (result>r).sum(dim=1)/(result.size()[1])
@@ -82,7 +82,7 @@ def main():
     for i, s in enumerate(custom_sigmas):
         plt.plot(rs, Rs_vals.select(dim=1, index=i), label=f'sigma = {s}')
 
-    plt.title(f'Certified Accuracy vs radius on MNIST test set (N={N})')
+    plt.title(f'Certified Accuracy vs radius on Cats/Dogs test set (N={N})')
     plt.xlabel('Radius')
     plt.ylim([0.0, 1.0])
     plt.ylabel('Certified Accuracy')
