@@ -13,7 +13,7 @@ class DnCNNModel(nn.Module):
         super(DnCNNModel, self).__init__()
 
         # Conv+ReLU: 64 chan
-        self.init_layer = nn.Conv2d(in_channels=num_x_chan, out_channels=64, kernel_size=3, padding='same'))
+        self.init_layer = nn.Conv2d(in_channels=num_x_chan, out_channels=64, kernel_size=3, padding='same')
 
         # Conv+BN+ReLU
         hidden_layers = []
