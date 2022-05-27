@@ -4,35 +4,36 @@ import torch.nn.functional as F
 
 
 class DnCNNModel(nn.Module):
-    def __init__(self, num_x_chan, D):
+    """
+    This class is from the work by Kai Zhang, Wangmeng Zuo, Yunjin Chen, Deyu Meng, and
+    Lei Zhang. The original code is here:
+    https://github.com/cszn/DnCNN/blob/master/TrainingCodes/dncnn_pytorch/main_train.py
+    """
+    def __init__(self, depth=17, n_channels=64, image_channels=1, use_bnorm=True, kernel_size=3):
         """
-        num_x_chan - int: the number of channels of the input images
-        D - int: the total number of layers the denoiser should have. The paper
-                 used 17 and 20
+        Tensor values coming in should already be in the range [0, 1]
         """
         super(DnCNNModel, self).__init__()
+        padding = 1
 
-        # Conv+ReLU: 64 chan
-        self.init_layer = nn.Conv2d(in_channels=num_x_chan, out_channels=64, kernel_size=3, padding='same')
-
-        # Conv+BN+ReLU
-        hidden_layers = []
-        for i in range(D - 2):
-            hidden_layers.append(nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding='same'))
-
-        self.conv_bn_layers = nn.ModuleList(hidden_layers)
+        layers = []
+        # Initial layer
+        layers.append(nn.Conv2d(in_channels=image_channels, out_channels=n_channels,
+                                       kernel_size=3, padding=padding, bias=True))
+        layers.append(nn.ReLU(inplace=True))
+        # Hidden layers
+        for i in range(depth - 2):
+            layers.append(nn.Conv2d(in_channels=n_channels, out_channels=n_channels,
+                                    kernel_size=kernel_size, padding=padding, bias=False))
+            layers.append(nn.BatchNorm2d(n_channels, eps=0.0001, momentum=0.95))
+            layers.append(nn.ReLU(inplace=True))
 
         # Conv layer for output
-        self.final_layer = nn.Conv2d(in_channels=64, out_channels=num_x_chan, kernel_size=3, padding='same')
-
+        layers.append(nn.Conv2d(in_channels=n_channels, out_channels=image_channels,
+                                       kernel_size=kernel_size, padding=padding, bias=False))
+        self.dncnn = nn.Sequential(*layers)
 
     def forward(self, x):
-        x = F.ReLU(self.init_layer(x))
-
-        for i in range(len(self.conv_bn_layers)):
-            x = self.conv_bn_layers[i](x)
-            bn = nn.BatchNorm1d(64)
-            x = F.ReLU(bn(x))
-        # not sure if i should use a ReLU on the final layer
-        v = self.final_layer(x)
-        return v
+        y = x
+        out = self.dncnn(x)
+        return y - out
