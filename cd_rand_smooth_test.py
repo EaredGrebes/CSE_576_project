@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as tfs
 import matplotlib.pyplot as plt
@@ -39,8 +40,8 @@ def main():
     # https://www.kaggle.com/competitions/dogs-vs-cats/data
     cats_and_dogs_data_dir = './data/train'
     sized_img_width        = 224 # Width and height to resize all images to
-    val_set_size           =  64 # 256 # Number of images to use in validation set (chosen randomly)
-    batch_size             =   1 # Images to run at once
+    val_set_size           = 256 # 256 # Number of images to use in validation set (chosen randomly)
+    batch_size             = 256 # Images to run at once
 
     data_tf = tfs.Compose([tfs.Resize((sized_img_width, sized_img_width))])
     cd_data = CatsDogsDataset(cats_and_dogs_data_dir, transform=data_tf)
@@ -48,7 +49,7 @@ def main():
                                                    [val_set_size, len(cd_data)-val_set_size], 
                                                    generator=torch.Generator().manual_seed(42))[0]
     data_loader = DataLoader(cd_data_subset, batch_size=batch_size, shuffle=False)
-    print(f'Cats-and-dogs data loaded. ({len(cd_data_subset)} images only)')
+    # print(f'Cats-and-dogs data loaded. ({len(cd_data_subset)} images only)')
     # for d, l in data_loader:
     #     print(f'batch 0 labels are: {l}')
     #     idx = 6
@@ -59,12 +60,14 @@ def main():
 
     # Load pre-trained model
     model = cm.binaryResNet()
-    model.load_state_dict(torch.load('cats_dogs_resNet18.pt', map_location=device))
+    model.load_state_dict(torch.load('cats_dogs_resNet18.pt'))
+    model.to(device)
     print('Loaded model binaryResNet.')
 
     # Estimate robustness
-    custom_sigmas = (3.0, 6.0, 9.0)
-    N = 200
+    custom_sigmas = (8.0, 10.0, 12.0, 14.0)
+    #custom_sigmas = [9]
+    N = 1000
     result = mr.meas_noise_robustness(model, data_loader,
                                       MC_itr=N, alpha=0.001, sigmas=custom_sigmas, 
                                       device=device)
