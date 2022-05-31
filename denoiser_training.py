@@ -134,7 +134,7 @@ def log(*args, **kwargs):
 if __name__ == '__main__':
     # model selection
     print('===> Building model')
-    model = DnCNN()
+    model = DnCNN(image_channels=3)
     
     initial_epoch = findLastCheckpoint(save_dir=save_dir)  # load the last model in matconvnet style
     if initial_epoch > 0:
@@ -154,13 +154,9 @@ if __name__ == '__main__':
     scheduler = MultiStepLR(optimizer, milestones=[30, 60, 90], gamma=0.2)  # learning rates
 
     for epoch in range(initial_epoch, n_epoch):
-        
-        xs = dg.datagenerator(data_dir=args.train_data, verbose=True)
-        xs = xs.astype('float32')/255.0
-        print(f"xs shape: {xs.shape}")
-        xs = torch.from_numpy(xs.transpose((0, 3, 1, 2)))  # tensor of the clean patches, NXCXHXW
-        print(f"xs size: {xs.size()}")
-        DDataset = DenoisingDataset(xs, sigma)
+        dg.datagenerator(data_dir=args.train_data, verbose=True)
+
+        DDataset = DenoisingDataset(sigma)
         DLoader = DataLoader(dataset=DDataset, num_workers=4, drop_last=True,
                              batch_size=batch_size, shuffle=True)
         epoch_loss = 0
@@ -175,8 +171,9 @@ if __name__ == '__main__':
                 loss.backward()
                 optimizer.step()
                 if n_count % 10 == 0:
-                    print('%4d %4d / %4d loss = %2.4f' % (epoch+1, n_count, xs.size(0)//batch_size, loss.item()/batch_size))
-        #scheduler.step(epoch)  # step to the learning rate in this epcoh
+                    print('%4d %4d / %4d loss = %2.4f' % (epoch+1, n_count, len(DDataset)//batch_size,
+                                                          loss.item()/batch_size))
+
         scheduler.step()  # step to the learning rate in this epcoh
         elapsed_time = time.time() - start_time
 

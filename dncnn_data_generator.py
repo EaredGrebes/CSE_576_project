@@ -38,19 +38,27 @@ class DenoisingDataset(Dataset):
         xs (Tensor): clean image patches
         sigma: noise level, e.g., 25
     """
-    def __init__(self, xs, sigma):
+    def __init__(self, sigma, data_dir='data/denoising_train_data/Train400'):
         super(DenoisingDataset, self).__init__()
-        self.xs = xs
+        self.data_dir = data_dir
         self.sigma = sigma
+        with open(self.data_dir + f"/patched/data_len.txt", "r") as f:
+            line = f.readline()
+        self.num_images = int(line.strip())
+
 
     def __getitem__(self, index):
-        batch_x = self.xs[index]
+        # loads the image (which has already been put in [0, 1] range
+        # adds gaussian noise normalized for the image range
+
+        batch_x = np.load(self.data_dir + f"/patched/patched{index}.npy")
+        batch_x = torch.from_numpy(batch_x.transpose((2, 0, 1)))
         noise = torch.randn(batch_x.size()).mul_(self.sigma/255.0)
         batch_y = batch_x + noise
         return batch_y, batch_x
 
     def __len__(self):
-        return self.xs.size(0)
+        return self.num_images
 
 
 def show(x, title=None, cbar=False, figsize=None):
@@ -98,7 +106,6 @@ def gen_patches(file_name):
         # extract patches
         for i in range(0, h_scaled - patch_size + 1, stride):
             for j in range(0, w_scaled - patch_size + 1, stride):
-                #x = img_scaled[i:i+patch_size, j:j+patch_size, :]
                 x = img_scaled[j:j+patch_size, i:i+patch_size, :]
                 for k in range(0, aug_times):
                     x_aug = data_aug(x, mode=np.random.randint(0, 8))
@@ -112,22 +119,26 @@ def datagenerator(data_dir='data/denoising_train_data/Train400', verbose=False):
     # initialize
     data = []
     # generate patches
+    num_orig_imgs = len(file_list)
+    counter = 0
     for i in range(len(file_list)):
         patches = gen_patches(file_list[i])
-        for patch in patches:    
-            data.append(patch)
+        num_patches = len(patches)
+        for j, patch in enumerate(patches):
+            #data.append(patch)
+            counter += 1
+            idx = i * num_patches + j
+            np.save(data_dir + f"/patched/patched{idx}.npy", patch.astype('float32') / 255.0)
         if verbose:
             print(str(i+1) + '/' + str(len(file_list)) + ' is done ^_^')
 
-    data = np.array(data, dtype='uint8')
-
     # no need to add a dimension, because we're keeping the color dims
-    # data = np.expand_dims(data, axis=3)
+        
+    with open(data_dir + f"/patched/data_len.txt", "w") as f:
+        f.write(f"{counter}\n")
 
-    discard_n = len(data) - len(data) // batch_size * batch_size  # because of batch namalization
-    data = np.delete(data, range(discard_n), axis=0)
     print('^_^-training data finished-^_^')
-    return data
+
 
 
 if __name__ == '__main__': 
