@@ -2,8 +2,9 @@ import torch
 import sys
 from math import sqrt
 import numpy as np
-from statistics import NormalDist
-from scipy.stats import binomtest
+#from statistics import NormalDist
+from scipy.stats import norm
+from scipy.stats import binom_test as binomtest
 import tqdm
 import matplotlib.pyplot as plt
 from statsmodels.stats.proportion import proportion_confint
@@ -53,7 +54,7 @@ def meas_noise_robustness(nn_model, dataloader, MC_itr=100, alpha=0.001, sigmas=
         for idx in tqdm.tqdm(range(mc_y_pred.size()[0]), desc='Calculating radii'): # Compute and save R for every image
             max_cnt = torch.max(mc_y_pred.select(0, idx)).item()
             pa = lower_conf_bound(max_cnt, MC_itr, alpha)
-            R = sigma*NormalDist().inv_cdf(pa)
+            R = sigma*norm.ppf(pa)
             R_vals[sigma_idx][idx] = R
 
         print()
@@ -65,7 +66,7 @@ def lower_conf_bound_old(k, n, alpha):
         return max_bnd
     else:
         p = float(k)/float(n)
-        z = NormalDist().inv_cdf(1-alpha) # aka "z-score"
+        z = norm.ppf(1-alpha) # aka "z-score"
         ndist_bnd = p - z*sqrt( p*(1-p) / n )
         return min(max_bnd, ndist_bnd)
 
