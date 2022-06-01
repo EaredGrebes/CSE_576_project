@@ -19,6 +19,8 @@ class DogsCatsDataset(Dataset):
     Resizes all images to a standard size given as height, width parameters.
     Defaults to 200x200.
 
+    The tensors of the image data are in the range [0, 1].
+
     A cat image has a label of 0.
     A dog image has a label of 1.
     """
@@ -46,17 +48,27 @@ class DogsCatsDataset(Dataset):
                     self.labels.append(1)
 
         self.num_samples = len(self.data_keys_list)
+        x0, y0 = self.__getitem__(0)
+        self.num_x_chan = x0.size()[0]
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, index):
+        """index - int"""
         path = self.directory + "train/" + self.data_keys_list[index]
         img = read_image(path)
-        return resize(img, [self.h, self.w]), self.labels[index]
+        img_resize = resize(img, [self.h, self.w])
+        img_normed = img_resize / 255
+        return img_normed, self.labels[index]
 
     def get_filename(self, index):
+        """index - int"""
         return self.map_idx_2_fn[index]
 
     def get_index(self, filename):
+        """filename - str"""
         return self.map_fn_2_idx[filename]
+
+    def get_num_channels(self):
+        return self.num_x_chan
