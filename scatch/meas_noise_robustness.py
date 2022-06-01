@@ -76,7 +76,7 @@ def lower_conf_bound(k, n, alpha):
     BIN_SEARCH_ITRS = 24 # Enough for 32-bit floating-point mantissa
     prob = 0.5
     for i in range(BIN_SEARCH_ITRS):
-        z = binomtest(k, n, p=prob, alternative='greater').pvalue
+        z = binomtest(k, n, p=prob, alternative='greater')
         if z < alpha: prob += (1/(2**(i+1)))
         else:         prob -= (1/(2**(i+1)))
     prob -= (1/(2**(BIN_SEARCH_ITRS))) # Subtract the maximum search error
