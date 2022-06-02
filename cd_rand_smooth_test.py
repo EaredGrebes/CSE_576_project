@@ -2,7 +2,9 @@ import torch
 from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as tfs
+import matplotlib
 import matplotlib.pyplot as plt
+from datetime import datetime
 import numpy as np
 import os
 
@@ -39,8 +41,8 @@ def main():
     # https://www.kaggle.com/competitions/dogs-vs-cats/data
     cats_and_dogs_data_dir = './data/train'
     sized_img_width        = 224 # Width and height to resize all images to
-    val_set_size           =  64 # 256 # Number of images to use in validation set (chosen randomly)
-    batch_size             =   1 # Images to run at once
+    val_set_size           = 256 # Number of images to use in validation set (chosen randomly)
+    batch_size             = 256 # Images to run at once
 
     data_tf = tfs.Compose([tfs.Resize((sized_img_width, sized_img_width))])
     cd_data = CatsDogsDataset(cats_and_dogs_data_dir, transform=data_tf)
@@ -63,21 +65,23 @@ def main():
     print('Loaded model binaryResNet.')
 
     # Estimate robustness
-    custom_sigmas = (3.0, 6.0, 9.0)
+    custom_sigmas = (9.0,)
     N = 200
     result = mr.meas_noise_robustness(model, data_loader,
                                       MC_itr=N, alpha=0.001, sigmas=custom_sigmas, 
                                       device=device)
     print('Evaluation complete!')
-    torch.save(result, 'data/imagenet_robustness_result.pt')
+    dt_str = datetime.now().strftime('%d-%m-%Y--%H%M%S')
+    torch.save(result, f'data/cd_robustness_result_{dt_str}.pt')
 
     # Compute proportion of images within robustness radius
-    rs = np.linspace(0.0, 8.0, num=1000)
+    rs = np.linspace(0.0, 26.0, num=1000)
     Rs_vals = torch.empty((len(rs), len(custom_sigmas)))
     for i, r in enumerate(rs):
         Rs_vals[i] = (result>r).sum(dim=1)/(result.size()[1])
 
     # Graph accuracy vs radius
+    matplotlib.use('Agg') # Use "non-interactive" backend to save the plot at the end
     plt.figure()
     for i, s in enumerate(custom_sigmas):
         plt.plot(rs, Rs_vals.select(dim=1, index=i), label=f'sigma = {s}')
@@ -88,7 +92,13 @@ def main():
     plt.ylabel('Certified Accuracy')
     plt.legend()
     plt.grid(True)
-    plt.show()
+
+    # plt.show() 
+    fname = f'./data/cd_rand_smooth_test_result_{dt_str}.png'
+    plt.savefig(fname)
+    print()
+    print(f'Plot saved to "{fname}"')
+    print()
 
 if __name__ == '__main__':
     main()
