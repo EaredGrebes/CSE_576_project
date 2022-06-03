@@ -8,6 +8,8 @@ import os
 
 import classifier_models as cm
 from scatch import meas_noise_robustness as mr
+from combined_model import CombinedModel
+from denoiser_training import DnCNN
 
 # Select device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -58,13 +60,17 @@ def main():
     #     break
 
     # Load pre-trained model
-    model = cm.binaryResNet()
-    model.load_state_dict(torch.load('cats_dogs_resNet18.pt', map_location=device))
-    print('Loaded model binaryResNet.')
+    # model = cm.binaryResNet()
+    # model.load_state_dict(torch.load('cats_dogs_resNet18.pt', map_location=device))
+    # print('Loaded model binaryResNet.')
+
+    model = CombinedModel(device)
+    print('loaded combined model')
 
     # Estimate robustness
-    custom_sigmas = (3.0, 6.0, 9.0)
-    N = 200
+    #custom_sigmas = (3.0, 6.0, 9.0)
+    custom_sigmas = (8.0, 10.0, 12.0, 14.0)
+    N = 1000
     result = mr.meas_noise_robustness(model.to(device=device), data_loader,
                                       MC_itr=N, alpha=0.001, sigmas=custom_sigmas, 
                                       device=device)
